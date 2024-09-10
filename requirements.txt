@@ -1,0 +1,9 @@
+uvicorn
+fastapi
+elasticsearch
+python-multipart
+transformers[torch]
+langchain_google_genai
+google
+ibm-cloud-sdk-core
+requests
