@@ -47,7 +47,7 @@ async def search_by_fid(fid,query,modeltype):
     result = doc_process.Data_By_FID(fid,query,modeltype)
     print("result")
     return result
-@app.post("/claros/facerec/gptforall/search_faq_documents)
+@app.post("/claros/facerec/gptforall/search_faq_documents")
 async def search_documents_faq(query):
     if not query:
         raise HTTPException(status_code=400,detail="query required")
