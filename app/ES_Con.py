@@ -153,3 +153,33 @@ class ES_connector:
         if match['hits']['hits']:
             details = match['hits']['hits']
             return details[0]["fields"]
+def search_docs_faq(self,query):
+    response = self.es.search(
+        index="teamsyncfaq",
+        body={
+            "size": 3,
+            "query": {
+                "bool": {
+                    "should": [
+                        {
+                            "text_expansion": {
+                                "combined_text_embedding": {
+                                    "model_text": query,
+                                    "model_id": ".elser_model_2",
+                                }
+                            }
+                        },
+                        {
+                            "match_phrase": {
+                                "text": query
+                            }
+                        }
+                    ]
+                }
+            },
+            "_source": ["title", "content","score"] 
+        },
+    )
+    return response['hits']['hits']
+
+    
