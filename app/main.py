@@ -47,6 +47,13 @@ async def search_by_fid(fid,query,modeltype):
     result = doc_process.Data_By_FID(fid,query,modeltype)
     print("result")
     return result
+@app.post("/claros/facerec/gptforall/search_faq_documents)
+async def search_documents_faq(query):
+    if not query:
+        raise HTTPException(status_code=400,detail="query required")
+    result=doc_process.search_faq_documents(query)
+    return result
+    
 
 if __name__ == '__main__':
     uvicorn.run("main:app", host="0.0.0.0", port=service_port)
