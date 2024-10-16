@@ -3,7 +3,7 @@ import uvicorn
 import os
 import doc_process
 
-service_port = int(os.environ["Service_Port"])
+SERVICE_PORT = int(os.environ["SERVICE_PORT"])
 
 app = FastAPI()
 
@@ -15,7 +15,7 @@ async def root():
 
 
 
-@app.post("/claros/facerec/teamsync/search_documents")
+@app.post("/teamsync/nlp/dms/search_documents")
 async def search_documents(text,username):
     if not text:
         raise HTTPException(status_code=400, detail="Query parameter 'text' is required.")
@@ -30,7 +30,7 @@ async def search_documents(text,username):
     result = doc_process.search_documents(text,username)
     return result
 
-@app.post("/claros/facerec/gptforall/search_documents")
+@app.post("/teamsync/nlp/docutalk/search_documents")
 async def search_documents(text,username,modeltype):
     print(text,username,modeltype)
     if not text:
@@ -39,7 +39,7 @@ async def search_documents(text,username,modeltype):
     print("Done...")
     return result
 
-@app.post("/claros/facerec/gptforall/search_by_fid")
+@app.post("/teamsync/nlp/docutalk/search_by_fid")
 async def search_by_fid(fid,query,modeltype):
     print(fid)
     if not fid:
@@ -47,7 +47,7 @@ async def search_by_fid(fid,query,modeltype):
     result = doc_process.Data_By_FID(fid,query,modeltype)
     print("result")
     return result
-@app.post("/claros/facerec/gptforall/search_faq_documents")
+@app.post("/teamsync/nlp/dms/search_faq_documents")
 async def search_documents_faq(query):
     if not query:
         raise HTTPException(status_code=400,detail="query required")
@@ -56,4 +56,4 @@ async def search_documents_faq(query):
     
 
 if __name__ == '__main__':
-    uvicorn.run("main:app", host="0.0.0.0", port=service_port)
+    uvicorn.run("main:app", host="0.0.0.0", port=SERVICE_PORT)
