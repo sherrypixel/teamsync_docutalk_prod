@@ -335,7 +335,7 @@ def ibm_cloud(text, query):
     print(data)
     return data['results'][0]['generated_text']
 def search_faq_document(query):
-    hits=ES_Con.search_docs_faq(query):
+    hits=ES_Con.search_docs_faq(query)
     search_results = []
     
     for hit in hits:
