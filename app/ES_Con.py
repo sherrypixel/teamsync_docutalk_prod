@@ -2,10 +2,10 @@ from elasticsearch import Elasticsearch
 import os
 
 
-ES_HOST = os.environ["ES_Host"]
-ES_PORT = int(os.environ["ES_Port"])
-ELASTIC_PASSWORD = os.environ["ES_Password"]
-ELASTIC_USER = os.environ["ES_User"]
+ES_HOST = os.environ["ES_HOST"]
+ES_PORT = int(os.environ["ES_PORT"])
+ELASTIC_PASSWORD = os.environ["ELASTIC_PASSWORD"]
+ELASTIC_USER = os.environ["ELASTIC_USER"]
 
 class ES_connector:
     def __init__(self) -> None:
