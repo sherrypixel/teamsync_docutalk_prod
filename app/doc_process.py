@@ -124,7 +124,7 @@ def Data_By_FID(fid,query,model_type):
     hits=ES.Data_By_FID_ES(fid,query)
     try:
         text=hits[0]["_source"].get("text","")
-    except exception as e:
+    except Exception as e:
         return [{"text":"file is not ready for querying"}]
     tables = hits[0]["_source"].get("tables", "")
     page_no=hits[0]["_source"].get("pageNo","")
