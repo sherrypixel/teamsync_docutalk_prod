@@ -122,7 +122,10 @@ def above_and_below_pagedata(text, page_no, file_id):
 
 def Data_By_FID(fid,query,model_type):
     hits=ES.Data_By_FID_ES(fid,query)
-    text=hits[0]["_source"].get("text","")
+    try:
+        text=hits[0]["_source"].get("text","")
+    except exception as e:
+        return [{"text":"file is not ready for querying"}]
     tables = hits[0]["_source"].get("tables", "")
     page_no=hits[0]["_source"].get("pageNo","")
     combined_text = above_and_below_pagedata(text, int(page_no),fid)
