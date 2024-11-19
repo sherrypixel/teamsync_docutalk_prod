@@ -51,16 +51,29 @@ class ES_connector:
             index="teamsyncfirstn",
             body={
                 "query": {
-                    "text_expansion": {
-                        "text_embedding": {
-                            "model_id": ".elser_model_2",
-                            "model_text": text
-                        }
+                    "bool": {
+                        "should": [
+                            {
+                                "text_expansion": {
+                                    "text_embedding": {
+                                        "model_id": ".elser_model_2",
+                                        "model_text": text
+                                    }
+                                }
+                            },
+                            {
+                                "multi_match": {
+                                    "query": text,
+                                    "fields": ["filename^2", "content"]
+                                }
+                            }
+                        ]
                     }
                 }
             }
         )
         return response["hits"]["hits"]
+
 
     def Search_Docs_gpt(self,query, username):
         response = self.es.search(
