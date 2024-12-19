@@ -31,51 +31,95 @@ class ES_connector:
         )
         return response["hits"]["hits"]
 
-    def Image_Query_search(self,text, index_name="object_det"):
+    def Image_Query_search(self, text, username,path,index_name="object_det"):
         ''' Search Query For Image Search in Teamsync '''
         response = self.es.search(
             index=index_name,
             query={
-                "text_expansion": {
-                    "descr_embedding": {
-                        "model_id": ".elser_model_2",
-                        "model_text": text,
-                    }
-                }
-            },
-        )
-        return response["hits"]["hits"]
-    
-    def Search_Docs(self,text):
-        response = self.es.search(
-            index="teamsyncfirstn",
-            body={
-                "query": {
-                    "bool": {
-                        "should": [
-                            {
-                                "text_expansion": {
-                                    "text_embedding": {
-                                        "model_id": ".elser_model_2",
-                                        "model_text": text
-                                    }
-                                }
-                            },
-                            {
-                                "multi_match": {
-                                    "query": text,
-                                    "fields": ["filename^2", "content"]
+                "bool": {
+                    "must": [
+                        {"match_phrase": {"username": username}},
+                        {"match_phrase_prefix":{"path":path}}],
+                    "should": [
+                       
+                        {
+                            "text_expansion": {
+                                "descr_embedding": {
+                                    "model_id": ".elser_model_2",
+                                    "model_text": text
                                 }
                             }
+                        }
                         ]
                     }
                 }
+            )
+        return response["hits"]["hits"]
+    
+    def Audio_Query_search(self,text,username,path, index_name="audio_text"):
+        ''' Search Query For Image Search in Teamsync '''
+        response = self.es.search(
+            index=index_name,
+            query={
+                "bool": {
+                    "must": [
+                        {"match_phrase": {"username": username}},
+                        {"match_phrase_prefix":{"path":path}}],
+                    "should": [
+                        {
+                            "text_expansion": {
+                                "audio_detail_embed": {
+                                    "model_id": ".elser_model_2",
+                                    "model_text": text
+                                }
+                            }
+                        }
+                        ]
+                    }
+                }
+            )
+        return response["hits"]["hits"]
+    
+    def Search_Docs(self,text,username,path):
+        response = self.es.search(
+        index="teamsyncfirstn",
+        body={
+            "query": {
+
+                "bool": {
+                    "must": [
+                            {"match_phrase": {"username": username}},
+                            {"match_phrase_prefix":{"path":path}}],
+                    "should": [
+                        
+                        {
+                            "match_phrase": {
+                                "text": {
+                                    "query": text,
+                                    "slop": 2  # Allows slight word order variations
+                                }
+                            }
+                        },
+                        {
+                            "text_expansion": {
+                                "text_embedding": {
+                                    "model_id": ".elser_model_2",
+                                    "model_text": text
+                                }
+                            }
+                        }
+                        
+                    ],
+                    "minimum_should_match": 1
+                }
             }
-        )
+        }
+    )
+        
         return response["hits"]["hits"]
 
 
-    def Search_Docs_gpt(self,query, username):
+    def Search_Docs_gpt(self, query, username):
         response = self.es.search(
             index="teamsyncfirstn",
             body={
@@ -91,13 +135,13 @@ class ES_connector:
                                             "text_expansion": {
                                                 "text_embedding": {
                                                     "model_text": query,
-                                                    "model_id": ".elser_model_2",
+                                                    "model_id": ".elser_model_2"  # ELSER model for embeddings
                                                 }
                                             }
                                         },
                                         {
                                             "match_phrase": {
-                                                "text": query
+                                                "text": query  # Match exact phrase in the text field
                                             }
                                         }
                                     ]
@@ -106,11 +150,13 @@ class ES_connector:
                         ]
                     }
                 },
-                "_source": ["text", "pageNo", "fId", "username", "tables", "fileName"]  # Include table data
-            },
-
+                "_source": [
+                    "text", "pageNo", "fId", "username", "tables", "fileName"
+                ]  # Fields to include in the response
+            }
         )
         return response['hits']['hits']
+
     #
     def Data_By_FID_ES(self, f_id, query):
         response = self.es.search(

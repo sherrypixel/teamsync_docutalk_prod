@@ -4,12 +4,13 @@ import requests
 import ES_Con
 import google.generativeai as genai
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
-
+import logging
 
 API_TOKEN = os.environ["API_TOKEN"]
 API_TOKEN_GEMINI = os.environ["API_TOKEN_GEMINI"]
 API_TOKEN_IBM = os.environ["API_TOKEN_IBM"]
 PROJECT_ID_IBM = os.environ["PROJECT_ID_IBM"]
+NLP_SEARCH_SCORE=int(os.environ["NLP_SEARCH_SCORE"])
 
 genai.configure(api_key=API_TOKEN_GEMINI)
 
@@ -26,24 +27,26 @@ except:
 
 ES= ES_Con.ES_connector()
 
-def search_documents(query, user_name):
+def search_documents(query,username,path):
     """
     Search documents in Elasticsearch based on the provided query.
     """
-    hits = ES.Search_Docs(query)
+    hits = ES.Search_Docs(query,username,path)
     search_results = []
     if not hits:
         return []
     max_score = hits[0]["_score"]
     file_list = []
+    count=0
     for hit in hits:
         score = hit["_score"]
-        relative_score = (score / max_score) * 100
-        username = hit["_source"].get("username", "")
+        relative_score = int((score / max_score) * 100)
         fileid = hit["_source"].get("fId")
-        if (relative_score > 60) and (username == user_name) and (fileid not in file_list):
+        if (relative_score > NLP_SEARCH_SCORE ) and (fileid not in file_list):
             file_list.append(fileid)
             search_results.append({"fId": fileid, "score": score})
+            count=count+1
+    logging.warning(count)
     return search_results
 
 def search_documents_gpt(query_text, user_name, model_type):
@@ -73,13 +76,7 @@ def search_documents_gpt(query_text, user_name, model_type):
     if model_type == "mistral":
         # model_answer = using_mistral(query_text,combined_text,lst)
         model_answer = ibm_cloud(combined_text, query_text)
-    # elif model_type == "phi3":
-    #     model_answer = using_phi3(query_text,text,lst)
-    #     try:
-    #         model_answer = extract_text_after_assistant(model_answer)
-    #         model_answer = truncate_after_text(model_answer)
-    #     except Exception as e:
-    #         model_answer =f"i am unable to answer Reason{e}"
+    
 
     elif model_type == 'phi3': # gemini
         model_answer = using_gemini(combined_text, query_text)
@@ -129,6 +126,7 @@ def Data_By_FID(fid,query,model_type):
     tables = hits[0]["_source"].get("tables", "")
     page_no=hits[0]["_source"].get("pageNo","")
     combined_text = above_and_below_pagedata(text, int(page_no),fid)
+    logging.warning(f"combined_text --> {combined_text}")
     if model_type == "mistral":
         # model_answer = using_mistral(query,combined_text, tables)
         model_answer = ibm_cloud(combined_text, query)
@@ -146,7 +144,8 @@ def Data_By_FID(fid,query,model_type):
         outres = f"model type not match :: {model_type}, modeltype :: ['mistral','phi3']"
         print(outres)
         return outres
-
+    
+    logging.warning(f"model_answer --> {model_answer}")
     return [{"text":model_answer}]
 
 def truncate_text(text, max_tokens, model_name):
@@ -336,7 +335,16 @@ def ibm_cloud(text, query):
         raise Exception("Non-200 response: " + str(response.text))
     data = response.json()
     print(data)
-    return data['results'][0]['generated_text']
+    generated_text=data['results'][0]['generated_text']
+    if not generated_text: 
+        warnings = data['system']['warnings']
+        if warnings:  
+            warning_msg = warnings[0]['message']  
+            return warning_msg
+        else:
+            return "No warnings found."
+    else:
+        return generated_text 
 def search_faq_document(query):
     hits=ES_Con.search_docs_faq(query)
     search_results = []
