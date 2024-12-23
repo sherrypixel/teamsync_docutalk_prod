@@ -85,37 +85,43 @@ class ES_connector:
         index="teamsyncfirstn",
         body={
             "query": {
-
                 "bool": {
-                    "must": [
-                            {"match_phrase": {"username": username}},
-                            {"match_phrase_prefix":{"path":path}}],
-                    "should": [
-                        
+                "must": [
+                    {
+                    "match": {
+                        "username": username
+                    }
+                    },
+                    {
+                    "match_phrase_prefix": {
+                        "path": path
+                    }
+                    },
+                    {
+                    "bool": {
+                        "must": [
                         {
-                            "match_phrase": {
-                                "text": {
-                                    "query": text,
-                                    "slop": 2  # Allows slight word order variations
-                                }
+                            "match_phrase_prefix": {
+                            "text": text
                             }
                         },
                         {
                             "text_expansion": {
-                                "text_embedding": {
-                                    "model_id": ".elser_model_2",
-                                    "model_text": text
-                                }
+                            "text_embedding": {
+                                "model_id": ".elser_model_2",
+                                "model_text": text
+                            }
                             }
                         }
-                        
-                    ],
-                    "minimum_should_match": 1
+                        ]
+                    }
+                    }
+                ]
                 }
             }
         }
-    )
-        
+        )
+            
         return response["hits"]["hits"]
 
 
