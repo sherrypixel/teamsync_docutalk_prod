@@ -7,3 +7,4 @@ langchain_google_genai
 google
 ibm-cloud-sdk-core
 requests
+nltk
