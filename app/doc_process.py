@@ -1,5 +1,5 @@
 import os
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer,AutoModelForCausalLM
 import requests
 import ES_Con
 import google.generativeai as genai
@@ -25,6 +25,9 @@ except:
     Mixtral_tokenizer = AutoTokenizer.from_pretrained("mistralai/Mixtral-8x7B-Instruct-v0.1")
     Phi_tokenizer = AutoTokenizer.from_pretrained("microsoft/Phi-3-mini-4k-instruct")
 
+
+
+
 ES= ES_Con.ES_connector()
 
 def search_documents(query,username,path):
@@ -32,6 +35,7 @@ def search_documents(query,username,path):
     Search documents in Elasticsearch based on the provided query.
     """
     hits = ES.Search_Docs(query,username,path)
+    
     search_results = []
     if not hits:
         return []
@@ -49,12 +53,17 @@ def search_documents(query,username,path):
     logging.warning(count)
     return search_results
 
-def search_documents_gpt(query_text, user_name, model_type):
+def search_documents_gpt(query_text, user_name, model_type,answerType):
     hits = ES.Search_Docs_gpt(query_text, user_name)
     filelist = []
     search_results = []
-    combined_text=''
     lst=[]
+   
+    file_id = hits[0]["_source"].get("fId", "")
+    page_no = hits[0]["_source"].get("pageNo", "")
+    text = hits[0]["_source"].get("text", "")
+    combined_text_single_doc=text + "\n" + above_and_below_pagedata(text, int(page_no), file_id)
+    combined_text_multi_doc=""
     for hit in hits:
         score = hit["_score"]
         if score > 3:
@@ -66,25 +75,41 @@ def search_documents_gpt(query_text, user_name, model_type):
                 base,extension=os.path.splitext(filename)
                 extension=str.upper(extension)
                 if extension!='.CSV':
-                    combined_text = combined_text+ above_and_below_pagedata(text, int(page_no), file_id)+"\n"
+                    combined_text_multi_doc = combined_text_multi_doc + "\n" + text
                 table_data = hit["_source"].get("tables", "")
+                filelist.append(filename)
                 lst.append(table_data)
-                search_results.append({"filename": filename, "fId": file_id, "page_no": page_no})
+                search_results.append({"filename": filename, "fId": file_id, "page_no": page_no,"score":score})
     if not search_results:
         return [{"text": "I am unable to provide answer based on the information i have .."}]
-    
-    if model_type == "mistral":
-        # model_answer = using_mistral(query_text,combined_text,lst)
-        model_answer = ibm_cloud(combined_text, query_text)
-    
+    if answerType=="singleDocument":
+        
+        if model_type == "mistral":
+            # model_answer = using_mistral(query_text,combined_text,lst)
+            model_answer = ibm_cloud(combined_text_single_doc, query_text)
+        
 
-    elif model_type == 'phi3': # gemini
-        model_answer = using_gemini(combined_text, query_text)
+        elif model_type == 'phi3': # gemini
+            model_answer = using_gemini(combined_text_single_doc, query_text)
 
-    else:
-        out_res = f"model type not match :: {model_type}, model_type :: ['mistral','phi3']"
-        print(out_res)
-        return out_res
+        else:
+            out_res = f"model type not match :: {model_type}, model_type :: ['mistral','phi3']"
+            print(out_res)
+            return out_res
+    elif answerType=="multiDocument":
+        if model_type == "mistral":
+            # model_answer = using_mistral(query_text,combined_text,lst)
+            model_answer = ibm_cloud(combined_text_multi_doc, query_text)
+        
+
+        elif model_type == 'phi3': # gemini
+            model_answer = using_gemini(combined_text_multi_doc, query_text)
+
+        else:
+            out_res = f"model type not match :: {model_type}, model_type :: ['mistral','phi3']"
+            print(out_res)
+            return out_res
+
     search_results.insert(0,{"text":model_answer})
     
     return search_results
@@ -130,13 +155,7 @@ def Data_By_FID(fid,query,model_type):
     if model_type == "mistral":
         # model_answer = using_mistral(query,combined_text, tables)
         model_answer = ibm_cloud(combined_text, query)
-    # elif model_type == "phi3":
-    #     model_answer = using_phi3(query,combined_text,tables)
-    #     try:
-    #         model_answer = extract_text_after_assistant(model_answer)
-    #         model_answer = truncate_after_text(model_answer)
-    #     except Exception as e:
-    #         model_answer =f"i am unable to answer Reason{e}"
+    
 
     elif model_type == 'phi3': # gemini
         model_answer = using_gemini(combined_text, query)
@@ -346,7 +365,7 @@ def ibm_cloud(text, query):
     else:
         return generated_text 
 def search_faq_document(query):
-    hits=ES_Con.search_docs_faq(query)
+    hits=ES.search_docs_faq(query)
     search_results = []
     
     for hit in hits:
@@ -356,6 +375,6 @@ def search_faq_document(query):
             title = hit["_source"].get("title", "")
             
             
-        search_results.append({"title": title, "content": content,"score":score})
+            search_results.append({"title": title, "content": content,"score":score})
     return search_results
 

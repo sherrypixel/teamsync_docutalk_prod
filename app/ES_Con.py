@@ -4,8 +4,9 @@ import os
 
 ES_HOST = os.environ["ES_HOST"]
 ES_PORT = int(os.environ["ES_PORT"])
-ELASTIC_PASSWORD = os.environ["ELASTIC_PASSWORD"]
+ELASTIC_PASSWORD =os.environ["ELASTIC_PASSWORD"]
 ELASTIC_USER = os.environ["ELASTIC_USER"]
+
 
 class ES_connector:
     def __init__(self) -> None:
@@ -14,6 +15,11 @@ class ES_connector:
 
     def Connect(self):
         self.es = Elasticsearch([{'host': ES_HOST, 'port': ES_PORT, 'scheme': 'http'}],basic_auth=(ELASTIC_USER, ELASTIC_PASSWORD))
+        es_version = self.es.info()['version']['number']
+        if es_version == "8.17.0":
+            self.model_id = ".elser_model_2_linux-x86_64_search"
+        else:
+            self.model_id = ".elser_model_2"
 
     def Query_Type_search(self,text, index_name="query_type_check"):
         ''' Search Query For Type Check --> (Document/Image) '''
@@ -23,7 +29,7 @@ class ES_connector:
             query={
                 "text_expansion": {
                     "type_detail": {
-                        "model_id": ".elser_model_2",
+                        "model_id": self.model_id,
                         "model_text": text,
                     }
                 }
@@ -45,7 +51,7 @@ class ES_connector:
                         {
                             "text_expansion": {
                                 "descr_embedding": {
-                                    "model_id": ".elser_model_2",
+                                    "model_id": self.model_id,
                                     "model_text": text
                                 }
                             }
@@ -69,7 +75,7 @@ class ES_connector:
                         {
                             "text_expansion": {
                                 "audio_detail_embed": {
-                                    "model_id": ".elser_model_2",
+                                    "model_id": self.model_id,
                                     "model_text": text
                                 }
                             }
@@ -101,14 +107,14 @@ class ES_connector:
                     "bool": {
                         "must": [
                         {
-                            "match_phrase_prefix": {
+                            "match": {
                             "text": text
                             }
                         },
                         {
                             "text_expansion": {
                             "text_embedding": {
-                                "model_id": ".elser_model_2",
+                                "model_id": self.model_id,
                                 "model_text": text
                             }
                             }
@@ -125,11 +131,11 @@ class ES_connector:
         return response["hits"]["hits"]
 
 
+
     def Search_Docs_gpt(self, query, username):
         response = self.es.search(
             index="teamsyncfirstn",
             body={
-                "size": 3,
                 "query": {
                     "bool": {
                         "must": [
@@ -141,7 +147,7 @@ class ES_connector:
                                             "text_expansion": {
                                                 "text_embedding": {
                                                     "model_text": query,
-                                                    "model_id": ".elser_model_2"  # ELSER model for embeddings
+                                                    "model_id": self.model_id  # ELSER model for embeddings
                                                 }
                                             }
                                         },
@@ -179,7 +185,7 @@ class ES_connector:
                                             "text_expansion": {
                                                 "text_embedding": {
                                                     "model_text": query,
-                                                    "model_id": ".elser_model_2",
+                                                    "model_id": self.model_id,
                                                 }
                                             }
                                         }
@@ -230,7 +236,7 @@ class ES_connector:
                                 "text_expansion": {
                                     "combined_text_embedding": {
                                         "model_text": query,
-                                        "model_id": ".elser_model_2",
+                                        "model_id": self.model_id,
                                     }
                                 }
                             },
@@ -248,3 +254,78 @@ class ES_connector:
         return response['hits']['hits']
 
     
+
+# ________________________________________________________________________________________________________
+
+    def DGHI_Search_Docs_gpt(self, query, username):
+            print("query recieved by elastic", query,username)
+            response = self.es.search(
+                index="dghi_teamsync",
+                body={
+                    "size": 3,
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"match": {"username": username}},  # Filter by username
+                                {
+                                    "bool": {
+                                        "should": [
+                                            {
+                                                "text_expansion": {
+                                                    "text_embedding": {
+                                                        "model_text": query,
+                                                        "model_id": self.model_id  # ELSER model for embeddings
+                                                    }
+                                                }
+                                            },
+                                            {
+                                                "match_phrase": {
+                                                    "text": query  # Match exact phrase in the text field
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "_source": [
+                        "text", "fId", "username", "fileName"
+                    ]  # Fields to include in the response
+                }
+            )
+            return response['hits']['hits']
+
+        #
+    def DGHI_Data_By_FID_ES(self, f_id, query):
+            response = self.es.search(
+                index="dghi_teamsync",
+                body={
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"match": {"fId": f_id}},  # Filter by fid
+                                {
+                                    "bool": {
+                                        "should": [
+                                            {
+                                                "text_expansion": {
+                                                    "text_embedding": {
+                                                        "model_text": query,
+                                                        "model_id": self.model_id,
+                                                    }
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            )
+
+            if response['hits']['hits']:
+                return response['hits']['hits']
+        
+# _______________________________________________________________________________________________________
