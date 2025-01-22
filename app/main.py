@@ -2,7 +2,6 @@ from fastapi import FastAPI,HTTPException, Header, Query
 import uvicorn
 import os
 import doc_process
-
 import logging
 
 SERVICE_PORT = int(os.environ["SERVICE_PORT"])
@@ -10,6 +9,44 @@ SERVICE_PORT = int(os.environ["SERVICE_PORT"])
 app = FastAPI()
 
 
+class NLP_Search:
+    @staticmethod
+    def Image(text,username,path):
+        out_res = doc_process.ES.Image_Query_search(text,username,path)
+        search_out = []
+        for i in out_res:
+            if int(i["_score"]) >10:
+                search_out.append({"fId": i["_source"]["fId"], "score": i["_score"]})
+        return search_out
+    @staticmethod
+    def NLP_Documents(text,username,path):
+        result = doc_process.search_documents(text,username,path) #{"fId": fileid, "score": score}
+        return result
+    @staticmethod
+    def MultiMedia(text,username,path):
+        out_res = doc_process.ES.Audio_Query_search(text,username,path)
+        search_out = []
+        for i in out_res:
+            for j in i["_source"]["details"]:
+                time = j["start"]
+                Text_ = j["text"].lower()
+                if text in Text_:
+                    search_out.append({"fId":i["_source"]["fid"], "score": i["_score"],"time":time})
+                    break
+                if Text_ in text:
+                    search_out.append({"fId":i["_source"]["fid"], "score": i["_score"],"time":time})
+                    break
+        logging.warning(f"Search Audio/video: {search_out}")
+        return search_out
+    def Auto(self,text,username,path):
+        res_img = self.Image(text,username,path)
+        res_media = self.MultiMedia(text,username,path)
+        result_doc = self.NLP_Documents(text,username,path)
+        results = res_img + res_media +result_doc
+        results.sort(reverse=True,key=lambda v:v["score"])
+        return results
+
+Nlp_search = NLP_Search()
 
 @app.get("/")
 async def root():
@@ -30,30 +67,19 @@ async def search_documents( text: str = Query(..., description="Search text quer
     logging.warning(f"modified path and username is :{path},{username}")
    
     if fileType =='multimedia':
-        out_res = doc_process.ES.Audio_Query_search(text,username,path,"audio_text")
-        search_out = []
-        for i in out_res:
-            for j in i["_source"]["details"]:
-                time = j["start"]
-                Text_ = j["text"].lower()
-                if text in Text_:
-                    search_out.append({"fId":i["_source"]["fid"], "score": i["_score"],"time":time})
-                    break
-                if Text_ in text:
-                    search_out.append({"fId":i["_source"]["fid"], "score": i["_score"],"time":time})
-                    break
-        logging.warning(f"Search Audio/video: {search_out}")
-        return search_out
+        result = Nlp_search.MultiMedia(text,username,path)
+        return result
     if fileType == "image":
-        out_res = doc_process.ES.Image_Query_search(text,username,path)
-        search_out = []
-        for i in out_res:
-            if int(i["_score"]) >10:
-                search_out.append({"fId": i["_source"]["fId"], "score": i["_score"]})
-        return search_out
-        
-    result = doc_process.search_documents(text,username,path)
-    return result
+        result = Nlp_search.Image(text,username,path)
+        return result
+    if fileType == "document":
+        result = Nlp_search.NLP_Documents(text,username,path)
+        return result
+
+    if fileType == "auto":
+        result = Nlp_search.Auto(text,username,path)
+        return result
+    logging.warning(f"File type not exist --> {fileType}")
 
 # ______________________________________________________________________________________________________
 
