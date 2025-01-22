@@ -5,6 +5,7 @@ import ES_Con
 import google.generativeai as genai
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 import logging
+import requests
 
 API_TOKEN = os.environ["API_TOKEN"]
 API_TOKEN_GEMINI = os.environ["API_TOKEN_GEMINI"]
@@ -53,17 +54,27 @@ def search_documents(query,username,path):
     logging.warning(count)
     return search_results
 
-def search_documents_gpt(query_text, user_name, model_type,answerType):
-    hits = ES.Search_Docs_gpt(query_text, user_name)
+def search_documents_gpt(query_text, user_name, model_type, answerType, path):
+    hits = ES.Search_Docs_gpt(query_text, user_name, path)
     filelist = []
     search_results = []
-    lst=[]
-   
+    lst = []
+
+    if answerType not in ["singleDocument", "multiDocument"]:
+        return [{"text": f"Unsupported answer type: {answerType}. Supported types: ['singleDocument', 'multiDocument']"}]
+
+    if model_type not in ["mistral", "phi3"]:
+        return [{"text": f"Unsupported model type: {model_type}. Supported types: ['mistral', 'phi3']"}]
+    
+    if not hits:
+        return [{"text": "No documents found for the query."}]
+
     file_id = hits[0]["_source"].get("fId", "")
     page_no = hits[0]["_source"].get("pageNo", "")
     text = hits[0]["_source"].get("text", "")
-    combined_text_single_doc=text + "\n" + above_and_below_pagedata(text, int(page_no), file_id)
-    combined_text_multi_doc=""
+    combined_text_single_doc = above_and_below_pagedata(text, int(page_no), file_id)
+    combined_text_multi_doc = ""
+
     for hit in hits:
         score = hit["_score"]
         if score > 3:
@@ -72,47 +83,35 @@ def search_documents_gpt(query_text, user_name, model_type,answerType):
                 file_id = hit["_source"].get("fId", "")
                 text = hit["_source"].get("text", "")
                 page_no = hit["_source"].get("pageNo", "")
-                base,extension=os.path.splitext(filename)
-                extension=str.upper(extension)
-                if extension!='.CSV':
-                    combined_text_multi_doc = combined_text_multi_doc + "\n" + text
+                base, extension = os.path.splitext(filename)
+                extension = str.upper(extension)
+                if extension != '.CSV':
+                    combined_text_multi_doc += "\n" + text
                 table_data = hit["_source"].get("tables", "")
                 filelist.append(filename)
                 lst.append(table_data)
-                search_results.append({"filename": filename, "fId": file_id, "page_no": page_no,"score":score})
-    if not search_results:
-        return [{"text": "I am unable to provide answer based on the information i have .."}]
-    if answerType=="singleDocument":
-        
-        if model_type == "mistral":
-            # model_answer = using_mistral(query_text,combined_text,lst)
-            model_answer = ibm_cloud(combined_text_single_doc, query_text)
-        
+                search_results.append({"filename": filename, "fId": file_id, "page_no": page_no, "score": score})
 
-        elif model_type == 'phi3': # gemini
+    if not search_results:
+        return [{"text": "I am unable to provide an answer based on the information I have."}]
+
+    if answerType == "singleDocument":
+        if model_type == "mistral":
+            model_answer = ibm_cloud_granite(combined_text_single_doc, query_text)
+        elif model_type == "phi3":  # Gemini
             model_answer = using_gemini(combined_text_single_doc, query_text)
 
-        else:
-            out_res = f"model type not match :: {model_type}, model_type :: ['mistral','phi3']"
-            print(out_res)
-            return out_res
-    elif answerType=="multiDocument":
+    elif answerType == "multiDocument":
         if model_type == "mistral":
-            # model_answer = using_mistral(query_text,combined_text,lst)
-            model_answer = ibm_cloud(combined_text_multi_doc, query_text)
-        
-
-        elif model_type == 'phi3': # gemini
+            model_answer = ibm_cloud_granite(combined_text_multi_doc, query_text)
+        elif model_type == "phi3":  # Gemini
             model_answer = using_gemini(combined_text_multi_doc, query_text)
 
-        else:
-            out_res = f"model type not match :: {model_type}, model_type :: ['mistral','phi3']"
-            print(out_res)
-            return out_res
+    search_results.insert(0, {"text": model_answer})
 
-    search_results.insert(0,{"text":model_answer})
-    
     return search_results
+
+
 
 def above_and_below_pagedata(text, page_no, file_id):
     page_no_below = page_no + 1
@@ -147,14 +146,14 @@ def Data_By_FID(fid,query,model_type):
     try:
         text=hits[0]["_source"].get("text","")
     except Exception as e:
-        return [{"text":"file is not ready for querying"}]
+        return [{"text":"No hits from database"}]
     tables = hits[0]["_source"].get("tables", "")
     page_no=hits[0]["_source"].get("pageNo","")
     combined_text = above_and_below_pagedata(text, int(page_no),fid)
     logging.warning(f"combined_text --> {combined_text}")
     if model_type == "mistral":
         # model_answer = using_mistral(query,combined_text, tables)
-        model_answer = ibm_cloud(combined_text, query)
+        model_answer = ibm_cloud_granite(combined_text, query)
     
 
     elif model_type == 'phi3': # gemini
@@ -300,17 +299,14 @@ def using_gemini(text, query_text):
 
 def ibm_cloud(text, query):
     prompt = f"You are a helpful Q&A assistant. Your task is to answer this question: {query}. Use only the information from the text ###{text}###. Provide answer strictly in HTML format."
+    
     # Create the authenticator.
     authenticator = IAMAuthenticator(API_TOKEN_IBM)
-    # print(authenticator)
-    # Construct the service instance.
-    service = "Bearer "
-    service += authenticator.token_manager.get_token()
-    # print("service : ",service)
-    # Use 'service' to invoke operations.
-
+    service = "Bearer " + authenticator.token_manager.get_token()
+    
     url = "https://us-south.ml.cloud.ibm.com/ml/v1/text/generation?version=2023-05-29"
     print('---------- prompt ----------', prompt)
+    
     body = {
         "input": prompt,
         "parameters": {
@@ -325,14 +321,14 @@ def ibm_cloud(text, query):
             "hap": {
                 "input": {
                     "enabled": True,
-                    "threshold": 0.5,
+                    "threshold": 0.9,
                     "mask": {
                         "remove_entity_value": True
                     }
                 },
                 "output": {
                     "enabled": True,
-                    "threshold": 0.5,
+                    "threshold": 0.9,
                     "mask": {
                         "remove_entity_value": True
                     }
@@ -340,30 +336,101 @@ def ibm_cloud(text, query):
             }
         }
     }
+    
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
         "Authorization": service
     }
+    
+    response = requests.post(url, headers=headers, json=body)
+    if response.status_code != 200:
+        raise Exception("Non-200 response: " + str(response.text))
+    
+    data = response.json()
+    
+    
+    generated_text = data['results'][0]['generated_text']
+    if not generated_text: 
+    # Extract moderation details
+        moderation_details = data['results'][0]['moderations']['hap']
+        flagged_words = []
+        
+        if moderation_details:
+            for moderation in moderation_details:
+                if 'entity' in moderation:
+                    flagged_words.append(moderation['word'])  # Extract flagged word
+                
+        # Log or return flagged words
+        if flagged_words:
+            return f"Unsuitable input detected. Flagged words: {', '.join(flagged_words)}"
+        else:
+            return "No flagged words found, but input was unsuitable."
+    else:
+        return generated_text
+    
+def ibm_cloud_granite(text, query):
+    authenticator = IAMAuthenticator(API_TOKEN_IBM)
+    service = "Bearer " + authenticator.token_manager.get_token()
+    url = "https://us-south.ml.cloud.ibm.com/ml/v1/text/generation?version=2023-05-29"
+    body = {
+        "input": f"""
+                <|system|>
+                You are a helpful Q&A assistant. Your task is to answer the question posed by the user, using **only** the information from the provided document. You must ensure that your response is grounded in the context and derived directly from the text. 
+
+                You should provide the response strictly in **HTML format**.
+
+                <|user|>
+                Answer this question: {query}
+                [Document]
+                ### {text} ###
+                [End]
+                <|assistant|>
+                """
+,
+        "parameters": {
+            "decoding_method": "greedy",
+            "max_new_tokens": 1500,
+            "min_new_tokens": 0,
+            "repetition_penalty": 1.05
+        },
+        "model_id": "ibm/granite-3-8b-instruct",
+        "project_id": PROJECT_ID_IBM
+    }
+
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": service
+    }
+
     response = requests.post(
         url,
         headers=headers,
         json=body
     )
+
     if response.status_code != 200:
         raise Exception("Non-200 response: " + str(response.text))
+
     data = response.json()
-    print(data)
-    generated_text=data['results'][0]['generated_text']
+    generated_text = data['results'][0]['generated_text']
     if not generated_text: 
-        warnings = data['system']['warnings']
-        if warnings:  
-            warning_msg = warnings[0]['message']  
-            return warning_msg
+    # Extract moderation details
+        moderation_details = data['results'][0]['moderations']['hap']
+        flagged_words = []
+        
+        if moderation_details:
+            for moderation in moderation_details:
+                if 'entity' in moderation:
+                    flagged_words.append(moderation['word'])  # Extract flagged word
+                
+        # Log or return flagged words
+        if flagged_words:
+            return f"Unsuitable input detected. Flagged words: {', '.join(flagged_words)}"
         else:
-            return "No warnings found."
-    else:
-        return generated_text 
+            return "No flagged words found, but input was unsuitable."
+    return generated_text
 def search_faq_document(query):
     hits=ES.search_docs_faq(query)
     search_results = []
